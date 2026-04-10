@@ -115,7 +115,9 @@ The entry point for the AI experience. It handles both traditional sorting and t
 ```kotlin
 SortFilterRow(
     activeSortType = uiState.sortType,
-    onSortClick = { viewModel.setSort(it) },
+    isPriceAscending = uiState.isPriceAscending,   
+    onSortChange = { viewModel.setSort(it) },      
+    onPriceAscendingChange = { viewModel.togglePrice(it) },
     onAskAiClick = { viewModel.showAiSheet() },
     chips = uiState.activeChips,
     onRemoveChip = { chip -> viewModel.removeChip(chip) }
@@ -231,7 +233,8 @@ Scaffold(
     topBar = {
         SortFilterRow(
             chips = uiState.activeChips,
-            onAskAiClick = { /* show sheet */ }
+            onAskAiClick = { /* show sheet */ },
+            ...
         )
     }
 ) {
