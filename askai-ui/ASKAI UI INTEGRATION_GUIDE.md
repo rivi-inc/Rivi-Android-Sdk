@@ -1,504 +1,270 @@
-# AskAI UI Components Integration Guide
+# Ask AI UI Integration Guide
 
+## 1. Overview
 
-The AskAI UI Components library provides ready-to-use Compose screens and UI building blocks for the Rivi Ask AI experience on Android.
+Ask AI fits into your existing flight or hotel search screen. It is a set of components you add to your existing results flow:
 
+1.  **`SortFilterRow`**: 	Place this at the top of the screen. It has the "Ask AI" button and shows the active filters (chips).
+2.  **`AskAiSheet`**: A bottom sheet where the user enters a natural language query (e.g., "cheap flights with meals").
+3.  **Warnings and banners**: Messages shown when Ask AI changes dates or returns a partial match
 
-It is intended for apps that want to integrate:
+---
 
+## 2. Integration Notes
 
-- an Ask AI dashboard experience
-- flight search UI powered by Ask AI
-- hotel search UI powered by Ask AI
-- Ask AI result rendering and supporting UI states
+These two integration details matter most:
+*   **Keep SortFilterRow visible**: Always place the `SortFilterRow` in a sticky header. Users need to see their active AI filters (chips) at all times so they understand *why* they are seeing specific results.
+*   **Always show parameter changes**: Do not hide the warning banner. If the AI shifted a user's search date, show the change immediately so the user knows the search context changed.
 
+---
 
-This guide is for third-party Android apps consuming the library as a published dependency.
+## 3. Theming
 
+These components inherit styling from `RiviTheme`. Wrap your screen in RiviTheme and the components use your app theme automatically.
 
-## 1. Installation
+*   **Colors**: Components use `RiviTheme.colorScheme` (Primary, Surface, and On-Surface).
+*   **Typography**: All text uses `RiviTheme.typography` (Montserrat by default).
+*   **Dark Mode**: Every component has a built-in dark mode variant that triggers automatically based on your `RiviTheme` state.
 
+---
 
-### Add Repository
+## 4. Setup
 
-Packages are published to [GitHub Packages](https://github.com/orgs/rivi-inc/packages?repo_name=Rivi-Android-Sdk) for repository **rivi-inc/Rivi-Android-Sdk**:
+### Registry Authentication
+The SDK is published through GitHub Packages.
+
+> [!IMPORTANT]
+> **Authentication is Required**: GitHub Packages requires authentication for Maven downloads, even when the repository is public You must provide a valid GitHub PAT with `read:packages` scope.
+
+See [Working with the Gradle registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-gradle-registry).
+
+**In `gradle.properties`:**
+```properties
+github.packages.user=YOUR_USERNAME
+github.packages.token=YOUR_GITHUB_PAT
+```
+
+**In `build.gradle.kts`:**
+```kotlin
+implementation("co.rivi:askai-ui-components:1.0.8")
+```
+
+---
+
+## 3. State Management
+
+This is the basic request and response flow.
+
+### a. Initialization
+Initialize Ask AI with your tenant token:
+```kotlin
+val askAI = AskAI.create(tenantToken = "YOUR_TENANT_TOKEN")
+```
+
+### b. Request Flow
+1.  **Start Search**: You send a query to the SDK via `askAI.flights.filter(query)`.
+2.  **The Result**: The SDK returns an `AskAIResult` object.
+3.  **The Loop**: To keep the search session alive, you must use the same `searchId` (UUID) for every request in that session.
+
+### c. ViewModel Implementation
+We recommend using a single `UiState` data class to keep your screen synchronized.
 
 ```kotlin
-// settings.gradle.kts
-dependencyResolutionManagement {
-    repositories {
-        maven {
-            name = "GitHubPackagesRiviAndroid"
-            url = uri("https://maven.pkg.github.com/rivi-inc/Rivi-Android-Sdk")
-            credentials(PasswordCredentials::class) {
-                username = providers.gradleProperty("github.packages.user").get()
-                password = providers.gradleProperty("github.packages.token").get()
-            }
+data class SearchUiState(
+    val activeChips: List<String> = emptyList(),
+    val aiNotice: String? = null,
+    val isPartialMatch: Boolean = false,
+    val isLoading: Boolean = false,
+    val results: List<FlightCardData> = emptyList()
+)
+
+class SearchViewModel(private val askAI: AskAI) : ViewModel() {
+    private val _uiState = MutableStateFlow(SearchUiState())
+    val uiState = _uiState.asStateFlow()
+
+    fun handleSearch(query: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            val result = askAI.flights.filter(AskAIFlightFilterRequest(filterQuery = query, ...))
+
+            _uiState.update { it.copy(
+                activeChips = result.chips,
+                aiNotice = result.entities.firstOrNull()?.parameterChangeNotice,
+                isPartialMatch = result.entities.firstOrNull()?.isPartialMatch ?: false,
+                isLoading = false
+            )}
         }
     }
 }
 ```
 
-In `~/.gradle/gradle.properties` set `github.packages.user` and `github.packages.token` (a GitHub PAT with `read:packages`; do not commit tokens). See [Working with the Gradle registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-gradle-registry).
+---
 
+## 4. Components
 
-### Add Dependencies
+### A. `SortFilterRow` (Header)
+The entry point for the AI experience. It handles both traditional sorting and the AI sheet trigger.
 
+**Parameters:**
+- `activeSortType: String` — The current sort (e.g., "BEST", "PRICE").
+- `chips: List<String>` — The AI-suggested filters currently applied.
+- `onAskAiClick: () -> Unit` — Trigger to open the `AskAiSheet`.
+- `onRemoveChip: (String) -> Unit` — Callback when a user cancels a specific preference.
 
-Add the UI library:
-
-
+**Implementation:**
 ```kotlin
-dependencies {
-   implementation("co.rivi:askai-ui-components:1.0.8") // Use latest available version
-}
-```
-
-
-The library depends on other Rivi libraries such as `askai` and `rivi-ui-core`. If your Maven setup resolves transitive dependencies correctly, you should not need to add them manually.
-
-
-If your environment requires explicit declarations, add:
-
-
-```kotlin
-dependencies {
-   implementation("co.rivi:askai-ui-components:1.0.8")
-   implementation("co.rivi:rivi-ui-core:1.0.8")
-   implementation("co.rivi:askai:1.0.8") // Use latest compatible version
-}
-```
-
-
-## 2. Host App Requirements
-
-
-Your app should provide:
-
-
-- Jetpack Compose enabled
-- Hilt enabled
-- access to the Rivi backend/authentication setup expected by the underlying Rivi libraries
-- a logged-in/authenticated app flow before running AI-backed user flows
-
-
-### Typical Gradle Plugins
-
-
-```kotlin
-plugins {
-   id("com.android.application")
-   kotlin("android")
-   id("com.google.dagger.hilt.android")
-   id("com.google.devtools.ksp")
-}
-```
-
-
-### Application Setup
-
-
-```kotlin
-@HiltAndroidApp
-class MyApp : Application()
-```
-
-
-### Activity Setup
-
-
-```kotlin
-@AndroidEntryPoint
-class MainActivity : ComponentActivity()
-```
-
-
-## 3. Quick Start
-
-
-The main entry points are:
-
-
-- `DashboardScreen`
-- `FlightSearchInputScreen`
-- `HotelSearchInputScreen`
-
-
-### Dashboard Example
-
-
-```kotlin
-@AndroidEntryPoint
-class MainActivity : ComponentActivity() {
-   override fun onCreate(savedInstanceState: Bundle?) {
-       super.onCreate(savedInstanceState)
-       setContent {
-           val dashboardViewModel: DashboardViewModel = hiltViewModel()
-
-
-           DashboardScreen(
-               viewModel = dashboardViewModel,
-               onNewChat = { message, attachmentUri ->
-                   // Open your chat screen here
-               },
-               onSearchClick = {
-                   // Navigate to your search experience
-               },
-               onSeeAllChatClick = {
-                   // Open chat history
-               },
-               onChatClick = { chatId ->
-                   // Open an existing chat
-               },
-               onLogout = {
-                   // Handle logout
-               }
-           )
-       }
-   }
-}
-```
-
-
-### Flight Search Example
-
-
-```kotlin
-@Composable
-fun FlightRoute() {
-   FlightSearchInputScreen(
-       onBackClick = { /* navigate back */ }
-   )
-}
-```
-
-
-### Hotel Search Example
-
-
-```kotlin
-@Composable
-fun HotelRoute() {
-   HotelSearchInputScreen(
-       onBackClick = { /* navigate back */ }
-   )
-}
-```
-
-
-## 4. Available Screens
-
-
-### `DashboardScreen`
-
-
-Top-level Ask AI entry screen with:
-
-
-- AI tab
-- Flight tab
-- Hotel tab
-- prompt input
-- recent chat drawer
-- suggestion UI
-
-
-Current API:
-
-
-```kotlin
-@Composable
-fun DashboardScreen(
-   onNewChat: (String, String?) -> Unit,
-   onSearchClick: () -> Unit,
-   onSeeAllChatClick: () -> Unit,
-   onChatClick: (chatId: String) -> Unit,
-   onLogout: () -> Unit,
-   onTalkToAiClick: () -> Unit = {},
-   onProfileClick: () -> Unit = {},
-   onMediaPicked: (((Uri) -> Unit) -> Unit) = {},
-   isVoiceEnabled: Boolean = true,
-   isAttachmentEnabled: Boolean = true,
-   viewModel: DashboardViewModel
+SortFilterRow(
+    activeSortType = uiState.sortType,
+    onSortClick = { viewModel.setSort(it) },
+    onAskAiClick = { viewModel.showAiSheet() },
+    chips = uiState.activeChips,
+    onRemoveChip = { chip -> viewModel.removeChip(chip) }
 )
 ```
 
+---
 
-You provide navigation/actions. The library provides the UI and state wiring.
+### B. `AskAiSheet` (Input)
+The primary interaction area for natural language queries.
 
+**Parameters:**
+- `value: String` — The user's input text.
+- `onValueChange: (String) -> Unit` — Logic to update state as the user types.
+- `onApply: () -> Unit` — Triggered by the "Improve Results" button.
+- `parameterChangeNotice: String?` — Displays the orange warning banner inside the sheet if the AI shifted context.
+- `isFlight: Boolean` — Toggles between flight and hotel-specific placeholders.
 
-### `FlightSearchInputScreen`
-
-
-Full flight experience with:
-
-
-- search form
-- autocomplete
-- passenger and cabin controls
-- Ask AI result states
-- sorting/filtering UI
-- result cards
-
-
-Current API:
-
-
+**Implementation:**
 ```kotlin
-@Composable
-fun FlightSearchInputScreen(
-   onBackClick: () -> Unit,
-   viewModel: FlightSearchInputViewModel = hiltViewModel(),
-   askAIViewModel: AskAIViewModel = hiltViewModel()
+AskAiSheet(
+    value = uiState.query,
+    onValueChange = { viewModel.updateQuery(it) },
+    onApply = { viewModel.submitQuery() },
+    onDismiss = { viewModel.hideSheet() },
+    parameterChangeNotice = uiState.aiNotice,
+    isFlight = true
 )
 ```
 
+---
 
-### `HotelSearchInputScreen`
+### C. `AskAIResultsBanner` (Partial match)
+**Purpose**: Show at top of results when AI made trade-offs.
 
+**When to use**: Render this at index `0` of your `LazyColumn` if the results returned do not match 100% of the user's specific preferences (due to price or availability tradeoffs).
 
-Full hotel experience with:
-
-
-- destination input
-- date range selection
-- guest/room selection
-- Ask AI hotel result states
-- sorting/filtering UI
-- result cards
-
-
-Current API:
-
-
+**Implementation:**
 ```kotlin
-@Composable
-fun HotelSearchInputScreen(
-   onBackClick: () -> Unit,
-   viewModel: HotelSearchInputViewModel = hiltViewModel(),
-   askAIViewModel: AskAIViewModel = hiltViewModel()
-)
+item {
+    if (uiState.isPartialMatch) {
+       AskAIResultsBanner()
+    }
+}
 ```
 
+---
 
-## 5. Theme and UI Requirements
+### D. `ParameterChangeWarning` & `Dialog`
+**Purpose**: Notifying users about Context Shifting (e.g., AI searching for different dates).
 
+- **Warning (Inline)**: Use `ParameterChangeWarning` inside the sheet for minor shifts.
+    - *Parameter*: `message: String`
+    - *Parameter*: `onClick: () -> Unit` (Optional: Use to re-open the search sheet).
+- **Dialog (Modal)**: Use `ParameterChangeDialog` for major parameter shifts that require high visibility.
 
-The library renders inside its own Ask AI theme layer, which is built on top of `rivi-ui-core`.
-
-
-In practice:
-
-
-- `DashboardScreen` wraps itself with `AskAIMaterialTheme`
-- `FlightSearchInputScreen` wraps itself with `AskAIMaterialTheme`
-- `HotelSearchInputScreen` wraps itself with `AskAIMaterialTheme`
-
-
-You do not need to wrap these screens manually just to make them work.
-
-
-## 6. End-to-End Integration Pattern
-
-
-### Dashboard Flow
-
-
-Typical host-app flow:
-
-
-1. Render `DashboardScreen`.
-2. Let the user enter a prompt or switch tabs.
-3. Handle `onNewChat(message, attachmentUri)` by navigating to your chat experience.
-4. Handle `onChatClick(chatId)` by reopening an existing chat.
-5. Handle profile, voice, and attachment actions in the host app.
-
-
-### Flight Flow
-
-
-Typical host-app flow:
-
-
-1. Render `FlightSearchInputScreen`.
-2. User fills search criteria.
-3. The screen ViewModel manages form state.
-4. `AskAIViewModel` handles Ask AI requests and result state.
-5. The library renders loading, errors, notices, result cards, and sorting/filter UI.
-
-
-### Hotel Flow
-
-
-Typical host-app flow:
-
-
-1. Render `HotelSearchInputScreen`.
-2. User selects destination, dates, and guests.
-3. The screen ViewModel manages input state.
-4. `AskAIViewModel` drives hotel AI result state.
-5. The library renders result cards and related UI.
-
-
-## 7. Architecture Overview
-
-
-This library includes:
-
-
-- screen composables
-- Ask AI-specific UI components
-- ViewModels for dashboard and search flows
-- integration logic between UI state and the underlying Rivi/AskAI layers
-
-
-Main public concepts:
-
-
-- `DashboardViewModel`
-- `FlightSearchInputViewModel`
-- `HotelSearchInputViewModel`
-- `AskAIViewModel`
-
-
-Main screen packages:
-
-
-```text
-co.rivi.askai.ui
-- component
-- screen
-- theme
-- util
-- viewmodel
+**Implementation (Dialog):**
+```kotlin
+if (uiState.showChangeDialog) {
+    ParameterChangeDialog(
+        message = uiState.aiNotice ?: "",
+        onDismiss = { viewModel.dismissDialog() }
+    )
+}
 ```
 
+---
 
-## 8. Key Dependencies Used by the Library
+### E. `ClearAskAIQueryDialog` (Sort conflict)
+**Purpose**: Prevents logical search conflicts. If a user tries to change the "Sort By" setting while AI chips are active, show this dialog to confirm they want to clear the AI session.
 
+**Implementation:**
+```kotlin
+if (uiState.showClearConfirm) {
+    ClearAskAIQueryDialog(
+        onDismiss = { /* Cancel */ },
+        onProceed = { viewModel.clearAiAndSort(newSort) }
+    )
+}
+```
 
-The library internally uses:
+---
 
+## 5. Required Behaviors
 
-- Jetpack Compose
-- Material 3
-- Hilt
-- Navigation Compose
-- Paging Compose
-- Kotlinx datetime
-- Kotlinx serialization
-- Coil Compose
-- Compose shimmer
-- Rivi AskAI SDK
-- Rivi UI Core
+*   **The Reset**: When a user removes the last chip, you **must** call a standard search (e.g., `sortBest()`) and clear the AI warnings. If you don't, the user will be stuck in a "stale" search session.
+*   **Sorting Conflict**: If the user has AI chips active and manually clicks a "Sort By" button (like "Price"), you should show the `ClearAskAIQueryDialog` to confirm they want to clear their AI search.
 
+---
 
-For most consumers, these are implementation details unless you are debugging dependency resolution.
+## 6. Complete Work-through
 
+### ViewModel Refinement Loop
+```kotlin
+fun removeChip(chip: String) {
+    val newList = uiState.value.activeChips.filter { it != chip }
 
-## 9. Integration Notes
+    if (newList.isEmpty()) {
+        // RESET to Best Sort (e.g. askAI.flights.sortBest())
+        _uiState.update { it.copy(activeChips = emptyList(), aiNotice = null) }
+        triggerStandardSearch("BEST")
+    } else {
+        // RE-FILTER with remaining chips
+        _uiState.update { it.copy(activeChips = newList) }
+        handleSearch(newList.joinToString(", "))
+    }
+}
+```
 
+### Screen Assembly
+```kotlin
+Scaffold(
+    topBar = {
+        SortFilterRow(
+            chips = uiState.activeChips,
+            onAskAiClick = { /* show sheet */ }
+        )
+    }
+) {
+    LazyColumn {
+        if (uiState.showPartialBanner) {
+            item { AskAIResultsBanner() }
+        }
+        items(uiState.results) { result ->
+            FlightCard(result)
+        }
+    }
+}
+```
 
-### Hilt
-
-
-The default screen APIs use `hiltViewModel()`.
-
-
-That means:
-
-
-- your host activity/fragment/composable entry point should be under Hilt
-- your app should have working Hilt setup
-
-
-### Navigation
-
-
-The library does not force a navigation framework on your app.
-
-
-Instead, the host app supplies navigation behavior through callbacks such as:
-
-
-- `onBackClick`
-- `onNewChat`
-- `onChatClick`
-- `onSearchClick`
-
-
-### Chat / Voice / Media Actions
-
-
-The dashboard screen delegates external actions to the host app.
-
-
-You should connect:
-
-
-- chat opening
-- chat-history navigation
-- voice route opening
-- media picker launch
-- logout/profile flows
+---
 
 
-## 10. Error Handling Expectations
+## 7. Troubleshooting & FAQ
 
+**Q: My dependencies won't download (401 Unauthorized)**
+> **A**: This is almost always a missing or expired GitHub Personal Access Token (PAT). Verify your PAT has the `read:packages` scope and is correctly saved in your `gradle.properties`.
 
-This library handles UI state for loading, empty, and result states, but host apps should still be prepared to handle:
+**Q: The "Ask AI" input is blank after submitting**
+> **A**: Ensure your `handleSearch` function updates the `query` field in your `SearchUiState`. The sheet is "stateless" and relies entirely on your ViewModel.
 
+---
 
-- missing authentication/session state
-- dependency injection misconfiguration
-- backend/network issues surfaced through the underlying Rivi and AskAI layers
+## 8. TL;DR
 
-
-If you are integrating the full AI result experience, refer to the AskAI SDK guide as well:
-
-
-- [askai/INTEGRATION_GUIDE.md](../askai/INTEGRATION_GUIDE.md)
-
-
-That guide explains:
-
-
-- SDK initialization
-- SSE subscription model
-- request/response flow
-- lifecycle cleanup
-
-
-## 11. Recommended Verification
-
-
-After integrating in a third-party app, verify:
-
-
-1. `DashboardScreen` renders correctly.
-2. Flight search input works end to end.
-3. Hotel search input works end to end.
-4. Hilt-backed ViewModels resolve correctly.
-5. The app can navigate out through all callback hooks.
-6. Ask AI results, loading states, and error states render correctly.
-
-
-## 12. Key Points
-
-
-- This library is for external app consumption as a dependency.
-- It already includes Ask AI-specific UI and screen orchestration.
-- It does not require `rivi-ui-components`.
-- It depends on `rivi-ui-core` and the AskAI stack under the hood.
-- Your app provides host-level navigation, auth/session readiness, and external actions.
-
-
-## 13. TL;DR
-
-
-1. Add the GitHub Packages Maven repository.
-2. Add `implementation("co.rivi:askai-ui-components:1.0.8")`.
-3. Enable Compose and Hilt in your app.
-4. Render `DashboardScreen`, `FlightSearchInputScreen`, or `HotelSearchInputScreen`.
-5. Wire the provided callbacks into your app's navigation and media/chat flows.
+Before you ship, verify these 5 points:
+- [ ] **Auth**: Is the GitHub PAT working?
+- [ ] **Reset**: Does clearing the last chip trigger a standard "Best Sort" search?
+- [ ] **Sticky Bar**: Is the `SortFilterRow` always visible at the top?
+- [ ] **Warnings**: Does the orange `ParameterChangeWarning` show up when the AI moves dates?
+- [ ] **Theme**: Do the colors look correct in both Light and Dark mode?
 
