@@ -1,7 +1,7 @@
 # Rivi Android SDK
-[![askai](https://img.shields.io/badge/askai-latest-blue)](./askai/INTEGRATION_GUIDE.md)
-[![askai-ui-components](https://img.shields.io/badge/askai--ui--components-latest-blue)](./askai-ui-components/INTEGRATION_GUIDE.md)
-[![rivi-ui-core](https://img.shields.io/badge/rivi--ui--core-latest-blue)](./rivi-ui-core/INTEGRATION_GUIDE.md)
+[![askai](https://img.shields.io/badge/askai-latest-blue)](./askai/ASKAI%20INTEGRATION_GUIDE.md)
+[![askai-ui-components](https://img.shields.io/badge/askai--ui--components-latest-blue)](./askai-ui/ASKAI%20UI%20INTEGRATION_GUIDE.md)
+[![rivi-ui-core](https://img.shields.io/badge/rivi--ui--core-latest-blue)](./rivi-ui-core/RIVI%20UI%20INTEGRATION_GUIDE.md)
 
 Welcome to the official **Rivi Android SDK** repository. This repository hosts the public Maven registry, package metadata, and integration documentation for Rivi’s AI-powered travel search and UI ecosystem.
 
@@ -26,9 +26,9 @@ It is designed to support different levels of integration:
 
 | Package | Purpose | Documentation |
 | :--- | :--- | :--- |
-| **`co.rivi:askai`** | Core Android SDK for AI ranking, SSE subscriptions, and travel search logic. | [Core SDK Guide](./askai/INTEGRATION_GUIDE.md) |
-| **`co.rivi:askai-ui-components`** | Ready-to-use Compose screens such as `Dashboard`, `FlightSearch`, and `HotelSearch`. | [UI Components Guide](./askai-ui-components/INTEGRATION_GUIDE.md) |
-| **`co.rivi:rivi-ui-core`** | Rivi design system, including theme, typography, spacing, and shared components. | [UI Core Guide](./rivi-ui-core/INTEGRATION_GUIDE.md) |
+| **`co.rivi:askai`** | Core Android SDK for AI ranking, SSE subscriptions, and travel search logic. | [Core SDK Guide](./askai/ASKAI%20INTEGRATION_GUIDE.md) |
+| **`co.rivi:askai-ui-components`** | Ready-to-use Compose screens such as `Dashboard`, `FlightSearch`, and `HotelSearch`. | [UI Components Guide](./askai-ui/ASKAI%20UI%20INTEGRATION_GUIDE.md) |
+| **`co.rivi:rivi-ui-core`** | Rivi design system, including theme, typography, spacing, and shared components. | [UI Core Guide](./rivi-ui-core/RIVI%20UI%20INTEGRATION_GUIDE.md) |
 
 ## Installation
 
@@ -76,9 +76,9 @@ dependencies {
 
 ## Integration Guides
 
-- [`askai` Integration Guide](./askai/INTEGRATION_GUIDE.md)
-- [`askai-ui-components` Integration Guide](./askai-ui-components/INTEGRATION_GUIDE.md)
-- [`rivi-ui-core` Integration Guide](./rivi-ui-core/INTEGRATION_GUIDE.md)
+- [`askai` Integration Guide](./askai/ASKAI%20INTEGRATION_GUIDE.md)
+- [`askai-ui-components` Integration Guide](./askai-ui/ASKAI%20UI%20INTEGRATION_GUIDE.md)
+- [`rivi-ui-core` Integration Guide](./rivi-ui-core/RIVI%20UI%20INTEGRATION_GUIDE.md)
 
 ## Module Guide
 
